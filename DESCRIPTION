@@ -1,0 +1,25 @@
+Package: ipedstidy
+Type: Package
+Title: Search, Download, and Tidy Multi-Year IPEDS Data by Variable and Institution
+Version: 0.1.0
+Author: Sheryl Liu
+Maintainer: Sheryl Liu <sherylliu2018@gmail.com>
+Description: Tools to search IPEDS (Integrated Postsecondary Education Data System)
+    variable definitions across collection years (2004-05 onward), download only the
+    specific survey tables a request needs, filter institutions by characteristics
+    (state, sector, level, Carnegie class, etc.), and assemble everything into one
+    tidy multi-year data frame keyed by UNITID and year. Built so that pulling IPEDS
+    data never requires manually clicking through the IPEDS Data Center website.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+Imports:
+    dplyr,
+    readr,
+    readxl,
+    stringr,
+    purrr,
+    tibble,
+    janitor,
+    rlang
+RoxygenNote: 7.3.1

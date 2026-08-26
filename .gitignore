@@ -1,0 +1,8 @@
+# Scratch folder - never commit or push this
+/Test/
+
+# Common R package build artifacts, in case any show up locally
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
