@@ -11,9 +11,13 @@
 #'
 #' One row per institution per year. Columns from different survey tables in
 #' the same year are joined together by UNITID; years are then stacked.
-#' Institutions or variables that don't exist in a given year become NA
-#' rather than causing an error, since IPEDS coverage genuinely changes
-#' year to year.
+#' Variables that don't exist in a given year become NA rather than causing
+#' an error. Institutions that match your filter in the directory table but
+#' are missing entirely from a requested data table (most often
+#' administrative "central office" entries that have no student data of
+#' their own - IPEDS mixes these into the directory alongside real
+#' campuses) are dropped from the final panel and reported by name via
+#' message(), rather than silently vanishing or erroring.
 #'
 #' @param selections a data frame with one row per variable you want, columns
 #'   `year`, `table_name`, `var_name` - typically built by running
@@ -86,8 +90,30 @@ build_ipeds_panel <- function(selections, cache_dir, unitids = NULL, ...) {
     dplyr::select(year = YEAR, UNITID, INSTNM, STABBR) |>
     dplyr::distinct()
 
-  panel |>
+  panel <- panel |>
     dplyr::left_join(hd_lookup, by = c("year", "UNITID")) |>
     dplyr::relocate(INSTNM, STABBR, .after = UNITID) |>
     dplyr::arrange(.data$UNITID, .data$year)
+
+  # --- Step 5: report (don't silently drop) institutions that matched the
+  # filter but never made it into the final panel for a given year. This
+  # is expected sometimes - e.g. a system "central office" record sits in
+  # the HD directory with the same state/control/level as its campuses but
+  # reports no enrollment/finance/etc. data of its own - but it should be
+  # visible, not silent.
+  for (yr in years) {
+    expected <- unitids
+    present  <- unique(panel$UNITID[panel$year == yr])
+    missing_ids <- setdiff(expected, present)
+    if (length(missing_ids) > 0) {
+      missing_names <- hd_all$INSTNM[hd_all$YEAR == yr & hd_all$UNITID %in% missing_ids]
+      message(
+        "Note: ", length(missing_ids), " institution(s) matched your filter for ", yr,
+        " but had no data in the requested table(s), so they're not in the panel: ",
+        paste(missing_names, collapse = "; ")
+      )
+    }
+  }
+
+  panel
 }
