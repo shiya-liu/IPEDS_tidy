@@ -2,20 +2,39 @@
 # Download and cache individual IPEDS survey tables as plain CSV data frames.
 #
 # NCES serves each table as its own small zip (not just the giant multi-GB
-# Access database). The URL pattern below was confirmed against NCES's site
-# and against a well-established open-source IPEDS download script:
-#   https://nces.ed.gov/ipeds/datacenter/data/HD2023_Data_Stata.zip
-# Despite the "_Stata" in the name, the zip actually contains a plain CSV -
-# no Stata software or license is needed to read it.
+# Access database). As of 2026, NCES serves files at two locations:
+#   current: https://nces.ed.gov/ipeds/complete-data-files/ADM2024.zip
+#   legacy:  https://nces.ed.gov/ipeds/datacenter/data/HD2023_Data_Stata.zip
+# Recent tables (e.g. ADM2024, SFA2324) exist only at the current location
+# (the legacy URL returns 404); some older tables (e.g. SFA2122) exist only at
+# the legacy one. So we try the current URL first and fall back to legacy.
+# Every zip contains a plain CSV - no Stata/SAS/SPSS software is needed.
 
-#' Build the download URL for one IPEDS survey table
+#' Candidate download URLs for one IPEDS survey table, in the order tried
 #'
 #' @param table_name exact table name as it appears in the dictionary's
 #'   `table_name` column, e.g. "HD2023", "EF2023A", "F2223_F1A"
-#' @return character URL to the zip file containing that table's CSV
+#' @return character vector of URLs: current NCES location first, then the
+#'   two legacy locations
+#' @export
+ipeds_table_urls <- function(table_name) {
+  c(
+    paste0("https://nces.ed.gov/ipeds/complete-data-files/", table_name, ".zip"),
+    paste0("https://nces.ed.gov/ipeds/datacenter/data/", table_name, "_Data_Stata.zip"),
+    paste0("https://nces.ed.gov/ipeds/datacenter/data/", table_name, ".zip")
+  )
+}
+
+#' Build the (primary) download URL for one IPEDS survey table
+#'
+#' Kept for backward compatibility. download_ipeds_table() does not rely on
+#' this single URL; it tries every URL from ipeds_table_urls() in turn.
+#'
+#' @param table_name exact table name, e.g. "HD2023"
+#' @return character URL of the current NCES location for that table's zip
 #' @export
 ipeds_table_url <- function(table_name) {
-  paste0("https://nces.ed.gov/ipeds/datacenter/data/", table_name, "_Data_Stata.zip")
+  ipeds_table_urls(table_name)[1]
 }
 
 #' Download (if not already cached) and read one IPEDS survey table
@@ -41,7 +60,7 @@ download_ipeds_table <- function(table_name, cache_dir, force = FALSE) {
   }
 
   zip_path <- file.path(tables_dir, paste0(table_name, "_raw.zip"))
-  .download_if_needed(ipeds_table_url(table_name), zip_path, force = force)
+  .download_first_zip(ipeds_table_urls(table_name), zip_path)
 
   unzip_dir <- file.path(tables_dir, paste0(table_name, "_unzipped"))
   if (dir.exists(unzip_dir)) unlink(unzip_dir, recursive = TRUE)
@@ -51,7 +70,8 @@ download_ipeds_table <- function(table_name, cache_dir, force = FALSE) {
   if (length(csv_files) == 0) {
     stop(
       "No CSV found inside the downloaded zip for ", table_name,
-      " - NCES may have changed their file naming. Check ", ipeds_table_url(table_name),
+      " - NCES may have changed their file naming. Check ",
+      paste(ipeds_table_urls(table_name), collapse = " or "),
       " manually.", call. = FALSE
     )
   }

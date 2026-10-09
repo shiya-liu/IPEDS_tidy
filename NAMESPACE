@@ -12,6 +12,7 @@ export(download_ipeds_table)
 export(build_ipeds_panel)
 export(ipeds_doc_url)
 export(ipeds_table_url)
+export(ipeds_table_urls)
 
 import(dplyr)
 importFrom(stringr, str_detect, str_to_lower, str_split, str_squish)

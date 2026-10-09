@@ -41,8 +41,54 @@
 .download_if_needed <- function(url, destfile, force = FALSE) {
   if (!file.exists(destfile) || force) {
     # mode = "wb" is important on Windows so zip/xlsx bytes aren't corrupted
-    # by newline translation
-    utils::download.file(url, destfile, mode = "wb", quiet = TRUE)
+    # by newline translation. If the download fails, remove any partial file
+    # so the next call doesn't mistake it for a good cached copy.
+    tryCatch(
+      utils::download.file(url, destfile, mode = "wb", quiet = TRUE),
+      error = function(e) {
+        if (file.exists(destfile)) unlink(destfile)
+        stop(e)
+      }
+    )
   }
   invisible(destfile)
+}
+
+#' Check whether a file is a zip archive (zip files start with the bytes "PK")
+#'
+#' A failed request can leave an HTML error page on disk under a .zip name,
+#' so we check the bytes instead of trusting the download call.
+#'
+#' @param path local file path
+#' @return TRUE or FALSE
+#' @keywords internal
+.is_zip <- function(path) {
+  file.exists(path) && identical(readBin(path, "raw", n = 2), charToRaw("PK"))
+}
+
+#' Download from the first URL that returns a real zip file
+#'
+#' Tries each URL in order and stops at the first one that works. Used because
+#' NCES serves current and older tables from different locations.
+#'
+#' @param urls character vector of candidate URLs, tried in order
+#' @param destfile local path to save the zip to
+#' @return destfile (invisibly); errors listing every URL tried if none worked
+#' @keywords internal
+.download_first_zip <- function(urls, destfile) {
+  for (url in urls) {
+    ok <- tryCatch({
+      # warnings (e.g. "HTTP status was 404") count as failure too
+      suppressWarnings(utils::download.file(url, destfile, mode = "wb", quiet = TRUE))
+      TRUE
+    }, error = function(e) FALSE)
+    if (ok && .is_zip(destfile)) return(invisible(destfile))
+    if (file.exists(destfile)) unlink(destfile)
+  }
+  stop(
+    "Could not download a zip from any of these URLs:\n  ",
+    paste(urls, collapse = "\n  "),
+    "\nCheck the table name against the dictionary and your connection to nces.ed.gov.",
+    call. = FALSE
+  )
 }

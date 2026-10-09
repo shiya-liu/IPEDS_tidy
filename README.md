@@ -146,10 +146,16 @@ whatever comes next.
   enough for your connection (`utils::download.file()` defaults to 60
   seconds, which can be tight on the bigger tables).
 - **"Could not find varTable/Tables sheets for year ..."**: NCES
-  occasionally tweaks sheet naming in the documentation workbook. Open the
-  file for that year and check the sheet names match the `varTable{yy}` /
-  `Tables{yy}` pattern the code expects; file an issue in this repo with
-  what you find.
+  occasionally tweaks sheet naming in the documentation workbook. The match
+  already ignores capitalization (`varTable24`, `vartable21`, `tables24` all
+  work). If it still fails, open the file for that year, check the sheet
+  names against the `varTable{yy}` / `Tables{yy}` pattern, and file an issue
+  in this repo with what you find.
+- **"Could not download a zip from any of these URLs"**: NCES serves recent
+  tables from `/ipeds/complete-data-files/` and some older ones only from
+  `/ipeds/datacenter/data/`; `download_ipeds_table()` tries both (see
+  `ipeds_table_urls()`). If all fail, check the exact table name in the
+  dictionary for that year and your connection to `nces.ed.gov`.
 - **A variable you expected is missing from a year**: `build_ipeds_panel()`
   warns (rather than errors) when a requested variable doesn't exist in a
   given year's file, and fills NA instead. Check the warning text — IPEDS
