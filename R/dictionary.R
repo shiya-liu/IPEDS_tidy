@@ -47,7 +47,7 @@ build_ipeds_dictionary <- function(years, cache_dir, force = FALSE) {
   per_year <- purrr::map_dfr(years, function(yr) {
 
     xlsx_path <- file.path(raw_dir, paste0("Tablesdoc_", .ipeds_year_code(yr), ".xlsx"))
-    .download_if_needed(ipeds_doc_url(yr), xlsx_path, force = force)
+    .download_if_needed(ipeds_doc_url(yr), xlsx_path, cache_dir = cache_dir, force = force)
 
     sheet_names <- readxl::excel_sheets(xlsx_path)
 
