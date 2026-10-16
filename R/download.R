@@ -2,32 +2,55 @@
 # Download and cache individual IPEDS survey tables as plain CSV data frames.
 #
 # NCES serves each table as its own small zip (not just the giant multi-GB
-# Access database). The URL pattern below was confirmed against NCES's site
-# and against a well-established open-source IPEDS download script:
-#   https://nces.ed.gov/ipeds/datacenter/data/HD2023_Data_Stata.zip
-# Despite the "_Stata" in the name, the zip actually contains a plain CSV -
-# no Stata software or license is needed to read it.
+# Access database). As of 2026, NCES serves files at two locations:
+#   current: https://nces.ed.gov/ipeds/complete-data-files/ADM2024.zip
+#   legacy:  https://nces.ed.gov/ipeds/datacenter/data/HD2023_Data_Stata.zip
+# Recent tables (e.g. ADM2024, SFA2324) exist only at the current location
+# (the legacy URL returns 404); some older tables (e.g. SFA2122) exist only at
+# the legacy one. So we try the current URL first and fall back to legacy.
+# Every zip contains a plain CSV - no Stata/SAS/SPSS software is needed.
 
-#' Build the download URL for one IPEDS survey table
+#' Candidate download URLs for one IPEDS survey table, in the order tried
 #'
 #' @param table_name exact table name as it appears in the dictionary's
 #'   `table_name` column, e.g. "HD2023", "EF2023A", "F2223_F1A"
-#' @return character URL to the zip file containing that table's CSV
+#' @return character vector of URLs: current NCES location first, then the
+#'   two legacy locations
+#' @export
+ipeds_table_urls <- function(table_name) {
+  c(
+    paste0("https://nces.ed.gov/ipeds/complete-data-files/", table_name, ".zip"),
+    paste0("https://nces.ed.gov/ipeds/datacenter/data/", table_name, "_Data_Stata.zip"),
+    paste0("https://nces.ed.gov/ipeds/datacenter/data/", table_name, ".zip")
+  )
+}
+
+#' Build the (primary) download URL for one IPEDS survey table
+#'
+#' Kept for backward compatibility. download_ipeds_table() does not rely on
+#' this single URL; it tries every URL from ipeds_table_urls() in turn.
+#'
+#' @param table_name exact table name, e.g. "HD2023"
+#' @return character URL of the current NCES location for that table's zip
 #' @export
 ipeds_table_url <- function(table_name) {
-  paste0("https://nces.ed.gov/ipeds/datacenter/data/", table_name, "_Data_Stata.zip")
+  ipeds_table_urls(table_name)[1]
 }
 
 #' Download (if not already cached) and read one IPEDS survey table
 #'
+#' The cached CSV keeps NCES's values exactly as text (blank = missing), and
+#' each download is recorded in download_log.csv in the cache folder. The
+#' returned tibble has column types set by looking at every value in each
+#' column: numbers become numeric, codes stay text.
+#'
 #' @param table_name exact table name, e.g. "HD2023"
-#' @param cache_dir folder to store the downloaded zip, unzipped CSV, and a
-#'   cleaned copy. Point this at your GitHub repo so tables only ever need
-#'   to be downloaded once, by anyone.
+#' @param cache_dir folder to store the cleaned CSV and the download log.
+#'   Point this at your GitHub repo so tables only ever need to be
+#'   downloaded once, by anyone.
 #' @param force logical, re-download even if a cached copy exists
-#' @return tibble with the table's data, column names left as-is (upper case,
-#'   IPEDS convention) except for a couple of internal housekeeping columns
-#'   dropped or renamed
+#' @return tibble with the table's data, column names upper case (IPEDS
+#'   convention), duplicate columns dropped
 #' @export
 download_ipeds_table <- function(table_name, cache_dir, force = FALSE) {
   .ensure_cache_dir(cache_dir)
@@ -37,11 +60,11 @@ download_ipeds_table <- function(table_name, cache_dir, force = FALSE) {
   cleaned_path <- file.path(tables_dir, paste0(table_name, ".csv"))
 
   if (file.exists(cleaned_path) && !force) {
-    return(readr::read_csv(cleaned_path, show_col_types = FALSE))
+    return(.set_column_types(.read_csv_as_text(cleaned_path)))
   }
 
   zip_path <- file.path(tables_dir, paste0(table_name, "_raw.zip"))
-  .download_if_needed(ipeds_table_url(table_name), zip_path, force = force)
+  source_url <- .download_first_zip(ipeds_table_urls(table_name), zip_path)
 
   unzip_dir <- file.path(tables_dir, paste0(table_name, "_unzipped"))
   if (dir.exists(unzip_dir)) unlink(unzip_dir, recursive = TRUE)
@@ -51,7 +74,8 @@ download_ipeds_table <- function(table_name, cache_dir, force = FALSE) {
   if (length(csv_files) == 0) {
     stop(
       "No CSV found inside the downloaded zip for ", table_name,
-      " - NCES may have changed their file naming. Check ", ipeds_table_url(table_name),
+      " - NCES may have changed their file naming. Check ",
+      paste(ipeds_table_urls(table_name), collapse = " or "),
       " manually.", call. = FALSE
     )
   }
@@ -61,25 +85,32 @@ download_ipeds_table <- function(table_name, cache_dir, force = FALSE) {
   revised <- csv_files[grepl("_rv", csv_files, ignore.case = TRUE)]
   chosen_file <- if (length(revised) > 0) revised[1] else csv_files[1]
 
-  # some years ship a duplicated column (e.g. two "ef2022a" columns) - repair
-  # to unique names quietly rather than erroring, we dedupe properly next
-  data <- suppressMessages(
-    readr::read_csv(chosen_file, show_col_types = FALSE, name_repair = "unique")
-  )
+  # Read every column as text: nothing is converted yet, so nothing is lost.
+  # (Duplicated column names, e.g. two "ef2022a" columns, are repaired to
+  # unique names while reading; we dedupe properly next.)
+  text <- .read_csv_as_text(chosen_file)
 
   # IPEDS variable names are already the "real" names (e.g. UNITID, INSTNM) -
   # we upper-case them for consistency, since a few years ship lower case,
   # and drop any duplicate columns that survived name-repair (keep first)
-  names(data) <- toupper(names(data))
-  data <- data[, !duplicated(names(data)), drop = FALSE]
+  names(text) <- toupper(names(text))
+  text <- text[, !duplicated(names(text)), drop = FALSE]
 
-  readr::write_csv(data, cleaned_path)
+  # Cache the text version (blank = missing, as in the NCES file) and record
+  # where and when it came from. The raw zip itself is not kept.
+  readr::write_csv(text, cleaned_path, na = "")
+  .log_download(
+    cache_dir,
+    file        = basename(cleaned_path),
+    source_url  = source_url,
+    source_file = basename(chosen_file)
+  )
 
   # tidy up the intermediate zip/unzip so the cache folder doesn't balloon
   unlink(zip_path)
   unlink(unzip_dir, recursive = TRUE)
 
-  data
+  .set_column_types(text)
 }
 
 #' Download/cache the institution directory (HD table) for one or more years

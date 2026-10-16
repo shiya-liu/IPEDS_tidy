@@ -1,7 +1,7 @@
 Package: ipedstidy
 Type: Package
 Title: Search, Download, and Tidy Multi-Year IPEDS Data by Variable and Institution
-Version: 0.1.0
+Version: 0.1.1
 Author: Sheryl Liu
 Maintainer: Sheryl Liu <sherylliu2018@gmail.com>
 Description: Tools to search IPEDS (Integrated Postsecondary Education Data System)

@@ -138,6 +138,16 @@ whatever comes next.
   default, so a school matches the panel for every requested year if it
   matched the filter in *any* of them. If you need stricter per-year
   matching, filter the output afterward.
+- **Where files come from.** Tables are the "Data File" zips on the IPEDS
+  [Complete Data Files](https://nces.ed.gov/ipeds/datacenter/DataFiles.aspx?gotoReportId=7&fromIpeds=true)
+  page. Every download is recorded in `download_log.csv` in the cache
+  folder: which file, the exact URL it came from, which CSV inside the zip
+  was used, and the date and time. The zip itself is not kept.
+- **How tables are read.** Every column is first read as text, so nothing
+  is lost to a wrong type guess. The cached CSV keeps NCES's values exactly
+  (blank = missing). The data frame you get back has its column types set by
+  looking at every value in each column: numbers come back as numbers,
+  codes with leading zeros (e.g. OPEID) stay text.
 
 ## Troubleshooting
 
@@ -146,10 +156,19 @@ whatever comes next.
   enough for your connection (`utils::download.file()` defaults to 60
   seconds, which can be tight on the bigger tables).
 - **"Could not find varTable/Tables sheets for year ..."**: NCES
-  occasionally tweaks sheet naming in the documentation workbook. Open the
-  file for that year and check the sheet names match the `varTable{yy}` /
-  `Tables{yy}` pattern the code expects; file an issue in this repo with
-  what you find.
+  occasionally tweaks sheet naming in the documentation workbook. The match
+  already ignores capitalization (`varTable24`, `vartable21`, `tables24` all
+  work). If it still fails, open the file for that year, check the sheet
+  names against the `varTable{yy}` / `Tables{yy}` pattern, and file an issue
+  in this repo with what you find.
+- **"Could not download a zip from any of these URLs"**: NCES serves recent
+  tables from `/ipeds/complete-data-files/` and some older ones only from
+  `/ipeds/datacenter/data/`; `download_ipeds_table()` tries both (see
+  `ipeds_table_urls()`). If all fail, check the exact table name in the
+  dictionary for that year and your connection to `nces.ed.gov`, then find
+  the table's "Data File" link on the Complete Data Files page (the error
+  message includes the link). If NCES has moved the files again, add the new
+  address to `ipeds_table_urls()`.
 - **A variable you expected is missing from a year**: `build_ipeds_panel()`
   warns (rather than errors) when a requested variable doesn't exist in a
   given year's file, and fills NA instead. Check the warning text — IPEDS

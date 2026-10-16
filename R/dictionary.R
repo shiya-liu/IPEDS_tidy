@@ -47,15 +47,20 @@ build_ipeds_dictionary <- function(years, cache_dir, force = FALSE) {
   per_year <- purrr::map_dfr(years, function(yr) {
 
     xlsx_path <- file.path(raw_dir, paste0("Tablesdoc_", .ipeds_year_code(yr), ".xlsx"))
-    .download_if_needed(ipeds_doc_url(yr), xlsx_path, force = force)
+    .download_if_needed(ipeds_doc_url(yr), xlsx_path, cache_dir = cache_dir, force = force)
 
     sheet_names <- readxl::excel_sheets(xlsx_path)
 
     # sheet names look like "varTable23", "Tables23", "valueSets23" - the
-    # numeric suffix is the two-digit start year, so find each by prefix
+    # numeric suffix is the two-digit start year, so find each by prefix.
+    # NCES is not consistent about capitalization across years (2021-22 uses
+    # "Tables21"/"vartable21", 2024-25 uses "tables24"/"varTable24"), so the
+    # match ignores case.
     yy <- sprintf("%02d", yr %% 100)
-    var_sheet   <- sheet_names[stringr::str_detect(sheet_names, paste0("^varTable", yy, "$"))]
-    table_sheet <- sheet_names[stringr::str_detect(sheet_names, paste0("^Tables",   yy, "$"))]
+    var_sheet   <- sheet_names[stringr::str_detect(
+      sheet_names, stringr::regex(paste0("^varTable", yy, "$"), ignore_case = TRUE))]
+    table_sheet <- sheet_names[stringr::str_detect(
+      sheet_names, stringr::regex(paste0("^Tables", yy, "$"), ignore_case = TRUE))]
 
     if (length(var_sheet) == 0 || length(table_sheet) == 0) {
       stop(
